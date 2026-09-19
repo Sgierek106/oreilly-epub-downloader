@@ -34,6 +34,9 @@ oreilly-dl "https://learning.oreilly.com/library/view/ai-engineering/97810981662
 
 # Custom output path
 oreilly-dl 9781098166298 -c cookies.json -o "My Book.epub"
+
+# Download multiple books sequentially (one ID or URL per line)
+oreilly-dl --book-file book-ids.txt -c cookies.json
 ```
 
 Example output:

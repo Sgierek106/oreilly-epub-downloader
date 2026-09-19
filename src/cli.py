@@ -39,7 +39,7 @@ def sanitize_filename(name: str) -> str:
 
 
 @click.command()
-@click.argument("book", required=True)
+@click.argument("book", required=False)
 @click.option(
     "-c",
     "--cookies",
@@ -53,35 +53,63 @@ def sanitize_filename(name: str) -> str:
     type=click.Path(path_type=Path),
     help="Output path (defaults to ./downloads/<title>.epub)",
 )
-def main(book: str, cookies: Path, output: Path | None) -> None:
+@click.option(
+    "-f",
+    "--book-file",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Path to a text file containing one book ID or URL per line",
+)
+def main(
+    book: str | None,
+    cookies: Path,
+    output: Path | None,
+    book_file: Path | None,
+) -> None:
     """Download O'Reilly books as EPUB.
 
-    BOOK can be a book ID or full O'Reilly URL.
+    BOOK can be a book ID or full O'Reilly URL. Use --book-file to download
+    multiple books sequentially from a text file.
 
     \b
     Examples:
         oreilly-dl 9781098166298 -c cookies.json
         oreilly-dl "https://learning.oreilly.com/library/view/book/9781098166298/" -c cookies.json
+        oreilly-dl --book-file book-ids.txt -c cookies.json
     """
-    book_id = extract_book_id(book)
-    console.print(f"[bold]Downloading book:[/] {book_id}")
-
     try:
+        if book and book_file:
+            raise click.UsageError("BOOK and --book-file cannot be used together")
+        if not book and not book_file:
+            raise click.UsageError("provide BOOK or --book-file")
+        if book_file and output:
+            raise click.UsageError("--output cannot be used with --book-file")
+
+        if book_file:
+            books = [line.strip() for line in book_file.read_text().splitlines()]
+            books = [book for book in books if book and not book.startswith("#")]
+            if not books:
+                raise click.UsageError(f"{book_file} does not contain any book IDs")
+        else:
+            books = [book]
+
         session = load_cookies(cookies)
 
         with OreillyClient(session) as client:
-            book_data = client.get_book(book_id)
+            for book_input in books:
+                book_id = extract_book_id(book_input)
+                console.print(f"[bold]Downloading book:[/] {book_id}")
+                book_data = client.get_book(book_id)
 
-        if output:
-            output_path = output if output.suffix == ".epub" else output.with_suffix(".epub")
-        else:
-            downloads = Path("downloads")
-            downloads.mkdir(exist_ok=True)
-            safe_title = sanitize_filename(book_data.metadata.title)
-            output_path = downloads / f"{safe_title}.epub"
+                if output:
+                    output_path = output if output.suffix == ".epub" else output.with_suffix(".epub")
+                else:
+                    downloads = Path("~/Downloads").expanduser()
+                    downloads.mkdir(exist_ok=True)
+                    safe_title = sanitize_filename(book_data.metadata.title)
+                    output_path = downloads / f"{safe_title}-{book_data.metadata.isbn}.epub"
 
-        create_epub(book_data, output_path)
-        console.print(f"\n[bold green]Done:[/] {output_path}")
+                create_epub(book_data, output_path)
+                console.print(f"\n[bold green]Done:[/] {output_path}")
 
     except KeyboardInterrupt:
         console.print("\n[yellow]Cancelled[/]")
