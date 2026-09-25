@@ -15,15 +15,28 @@ console = Console()
 
 
 def extract_book_id(book_input: str) -> str:
-    """Extract book ID from URL or direct input."""
-    url_pattern = r"learning\.oreilly\.com/library/view/[^/]+/(\d+)"
-    match = re.search(url_pattern, book_input)
-    if match:
-        return match.group(1)
+    """Extract book ID from a URL or direct input.
 
+    Handles O'Reilly learning URLs, Packt product URLs (and other URLs where
+    the book ID is the numeric part at the end), raw book IDs, and ISBN-like
+    numbers.
+    """
+    # O'Reilly learning URL, e.g. .../library/view/<slug>/<book-id>/
+    oreilly_match = re.search(r"learning\.oreilly\.com/library/view/[^/]+/(\d+)", book_input)
+    if oreilly_match:
+        return oreilly_match.group(1)
+
+    # Direct numeric input
     if re.match(r"^\d+$", book_input):
         return book_input
 
+    # Generic URL: the numeric part at the end of the URL,
+    # e.g. https://www.packtpub.com/product/<title>/<book-id>
+    url_match = re.search(r"https?://\S*/(\d+)", book_input)
+    if url_match:
+        return url_match.group(1)
+
+    # ISBN-like number anywhere in the input
     isbn_match = re.search(r"(\d{10,13})", book_input)
     if isbn_match:
         return isbn_match.group(1)
@@ -67,13 +80,15 @@ def main(
 ) -> None:
     """Download O'Reilly books as EPUB.
 
-    BOOK can be a book ID or full O'Reilly URL. Use --book-file to download
-    multiple books sequentially from a text file.
+    BOOK can be a book ID or a URL (O'Reilly learning or Packt product URLs).
+    Use --book-file to download multiple books sequentially from a text file
+    containing one book ID or URL per line.
 
     \b
     Examples:
         oreilly-dl 9781098166298 -c cookies.json
         oreilly-dl "https://learning.oreilly.com/library/view/book/9781098166298/" -c cookies.json
+        oreilly-dl "https://www.packtpub.com/product/Bare-Metal-Embedded-C-Programming/9781835460818" -c cookies.json
         oreilly-dl --book-file book-ids.txt -c cookies.json
     """
     try:

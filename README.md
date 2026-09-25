@@ -32,6 +32,9 @@ oreilly-dl 9781098166298 -c cookies.json
 # By URL
 oreilly-dl "https://learning.oreilly.com/library/view/ai-engineering/9781098166298/" -c cookies.json
 
+# By Packt product URL (book ID is the numeric part at the end)
+oreilly-dl "https://www.packtpub.com/product/Bare-Metal-Embedded-C-Programming/9781835460818" -c cookies.json
+
 # Custom output path
 oreilly-dl 9781098166298 -c cookies.json -o "My Book.epub"
 
@@ -50,6 +53,10 @@ Books are saved to `./downloads/` by default.
 The book ID is the number in the O'Reilly URL:
 - URL: `https://learning.oreilly.com/library/view/ai-engineering/9781098166298/`
 - Book ID: `9781098166298`
+
+You can also paste a Packt product URL — the book ID is the numeric part at the end:
+- URL: `https://www.packtpub.com/product/Bare-Metal-Embedded-C-Programming/9781835460818`
+- Book ID: `9781835460818`
 
 ## Refreshing Cookies
 
