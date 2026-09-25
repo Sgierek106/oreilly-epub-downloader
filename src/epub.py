@@ -43,11 +43,23 @@ def create_epub(book: Book, output_path: Path) -> Path:
     if book.metadata.isbn:
         epub_book.add_metadata("DC", "identifier", book.metadata.isbn, {"id": "isbn"})
 
-    # Add cover image if available
+    # Add cover image if available. Reuse the cover image already collected
+    # from the chapters (if present) so the same bytes are not embedded twice.
     if book.cover_image:
-        cover_ext = _guess_image_extension(book.cover_image)
-        cover_filename = f"cover.{cover_ext}"
-        epub_book.set_cover(cover_filename, book.cover_image)
+        cover_filename = next(
+            (
+                img.filename
+                for img in book.images.values()
+                if img.data == book.cover_image
+            ),
+            None,
+        )
+        if cover_filename is None:
+            cover_ext = _guess_image_extension(book.cover_image)
+            cover_filename = f"cover.{cover_ext}"
+        # create_page=False: the book's "Cover" chapter already shows the
+        # image in the spine; we only need the image registered as the cover.
+        epub_book.set_cover(cover_filename, book.cover_image, create_page=False)
         console.print("[dim]Added cover image[/]")
 
     # Add CSS
@@ -60,18 +72,23 @@ def create_epub(book: Book, output_path: Path) -> Path:
     )
     epub_book.add_item(css_item)
 
-    # Add images
+    # Add images (the cover is already added via set_cover)
     if book.images:
+        added = 0
         for url, image in book.images.items():
-            if image.data:
-                img_item = epub.EpubItem(
-                    uid=f"img_{image.filename.replace('/', '_').replace('.', '_')}",
-                    file_name=image.filename,
-                    media_type=image.media_type,
-                    content=image.data,
-                )
-                epub_book.add_item(img_item)
-        console.print(f"[dim]Added {len(book.images)} images[/]")
+            if not image.data:
+                continue
+            if book.cover_image and image.data == book.cover_image:
+                continue
+            img_item = epub.EpubItem(
+                uid=f"img_{image.filename.replace('/', '_').replace('.', '_')}",
+                file_name=image.filename,
+                media_type=image.media_type,
+                content=image.data,
+            )
+            epub_book.add_item(img_item)
+            added += 1
+        console.print(f"[dim]Added {added} images[/]")
 
     # Create chapters
     epub_chapters = []

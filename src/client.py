@@ -71,8 +71,15 @@ class OreillyClient:
         images = self._fetch_images(chapters)
         console.print(f"[green]Downloaded {len(images)} images[/]")
 
-        # Fetch cover image
+        # The API does not expose authors, so recover them from the title page.
+        if not metadata.authors:
+            metadata.authors = self._extract_authors(chapters)
+
+        # Fetch cover image. Prefer the dedicated cover URL; otherwise reuse the
+        # cover image already downloaded from the "Cover" chapter.
         cover_image = self._fetch_cover(metadata.cover_url)
+        if not cover_image:
+            cover_image = self._find_cover_image(images)
 
         return Book(metadata=metadata, chapters=chapters, cover_image=cover_image, images=images)
 
@@ -87,22 +94,28 @@ class OreillyClient:
 
         data = response.json()
 
-        # Extract authors
-        authors = [a.get("name", "") for a in data.get("authors", [])]
-        if not authors:
-            authors = [data.get("author", "Unknown")]
+        # The API exposes the description under a "descriptions" dict keyed by
+        # MIME type. Prefer plain text, falling back to stripped HTML.
+        descriptions = data.get("descriptions", {}) or {}
+        description = descriptions.get("text/plain", "")
+        if not description:
+            html_desc = descriptions.get("text/html", "")
+            if html_desc:
+                description = BeautifulSoup(html_desc, "lxml").get_text(
+                    " ", strip=True
+                )
 
-        # Extract cover URL
+        # The epub endpoint does not expose authors or a publisher. Authors are
+        # recovered from the title page in get_book(); the publisher defaults to
+        # O'Reilly (this is an O'Reilly downloader).
         cover_url = data.get("cover", "") or data.get("cover_url", "")
 
         return BookMetadata(
             id=book_id,
             title=data.get("title", "Unknown Title"),
-            authors=authors,
-            publisher=data.get("publishers", [{}])[0].get("name", "")
-            if data.get("publishers")
-            else data.get("publisher", ""),
-            description=data.get("description", ""),
+            authors=[],
+            publisher=data.get("publisher") or "O'Reilly Media, Inc.",
+            description=description,
             cover_url=cover_url,
             isbn=data.get("isbn", ""),
             language=data.get("language", "en"),
@@ -387,6 +400,40 @@ class OreillyClient:
             return "".join(str(child) for child in content_div.children)
 
         return str(soup)
+
+    def _extract_authors(self, chapters: list[Chapter]) -> list[str]:
+        """Recover author names from the title page chapter.
+
+        The epub API does not expose authors, but the title page contains a
+        ``<p class="author">`` element with the author name(s).
+        """
+        for chapter in chapters:
+            if not chapter.html_content:
+                continue
+
+            soup = BeautifulSoup(chapter.html_content, "lxml")
+            author_el = soup.select_one("p.author, [class*='author']")
+            if not author_el:
+                continue
+
+            text = author_el.get_text(" ", strip=True)
+            if not text:
+                continue
+
+            # Split on common separators ("and", commas) into individual names.
+            parts = re.split(r"\s+and\s+|,", text)
+            authors = [p.strip() for p in parts if p.strip()]
+            if authors:
+                return authors
+
+        return []
+
+    def _find_cover_image(self, images: dict[str, Image]) -> bytes:
+        """Find the cover image among already-downloaded chapter images."""
+        for image in images.values():
+            if "cover" in image.filename.lower():
+                return image.data
+        return b""
 
     def _fetch_cover(self, cover_url: str) -> bytes:
         """Fetch cover image."""
