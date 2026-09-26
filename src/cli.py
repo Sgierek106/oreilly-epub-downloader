@@ -8,7 +8,7 @@ import click
 from rich.console import Console
 
 from .client import OreillyClient
-from .cookie_auth import load_cookies
+from .cookie_auth import CookieExpiredError, check_cookie_expiry, load_cookies
 from .epub import create_epub
 
 console = Console()
@@ -108,6 +108,19 @@ def main(
             books = [book]
 
         session = load_cookies(cookies)
+
+        try:
+            check_cookie_expiry(session)
+        except CookieExpiredError as e:
+            console.print(f"\n[bold red]Cookies expired:[/] {e}")
+            console.print(
+                "[yellow]To refresh, log into https://learning.oreilly.com, "
+                "open DevTools (Cmd+Option+I) > Console, and run:\n"
+                "  JSON.stringify(Object.fromEntries("
+                "document.cookie.split('; ').map(c => c.split('='))))\n"
+                "Then save the output to your cookies file and try again.[/]"
+            )
+            sys.exit(1)
 
         with OreillyClient(session) as client:
             for book_input in books:

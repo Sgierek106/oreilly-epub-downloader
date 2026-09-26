@@ -60,7 +60,7 @@ You can also paste a Packt product URL — the book ID is the numeric part at th
 
 ## Refreshing Cookies
 
-Cookies expire periodically. When downloads fail, re-export cookies from your browser.
+Cookies expire periodically (the session token is short-lived, roughly a day). The tool checks the token's expiry before downloading and halts with a warning if it has expired — re-export cookies from your browser and try again.
 
 ## Requirements
 
