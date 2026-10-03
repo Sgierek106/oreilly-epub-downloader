@@ -452,6 +452,11 @@ class OreillyClient:
             console.print(f"[yellow]Warning: Failed to fetch cover: {e}[/]")
             return b""
 
+    def update_session(self, session: Session) -> None:
+        """Swap refreshed cookies into the live HTTP client."""
+        self.session = session
+        self.http.headers["Cookie"] = session.get_cookie_header()
+
     def close(self) -> None:
         """Close the HTTP client."""
         self.http.close()
