@@ -8,7 +8,7 @@ import click
 from rich.console import Console
 
 from .client import OreillyClient
-from .cookie_auth import CookieExpiredError, check_cookie_expiry, load_cookies
+from .cookie_auth import CookieExpiredError, Session, check_cookie_expiry, load_cookies
 from .epub import create_epub
 
 console = Console()
@@ -49,6 +49,27 @@ def sanitize_filename(name: str) -> str:
     safe = re.sub(r'[<>:"/\\|?*]', "", name)
     safe = re.sub(r"\s+", " ", safe).strip()
     return safe[:100]
+
+
+def require_valid_cookies(session: Session) -> None:
+    """Halt with refresh instructions if the session cookie has expired.
+
+    Called before each book download: the token is short-lived (~1 day), so a
+    long batch run can outlive it. Without this per-book check the API would
+    silently return truncated preview content for the remaining books.
+    """
+    try:
+        check_cookie_expiry(session)
+    except CookieExpiredError as e:
+        console.print(f"\n[bold red]Cookies expired:[/] {e}")
+        console.print(
+            "[yellow]To refresh, log into https://learning.oreilly.com, "
+            "open DevTools (Cmd+Option+I) > Console, and run:\n"
+            "  JSON.stringify(Object.fromEntries("
+            "document.cookie.split('; ').map(c => c.split('='))))\n"
+            "Then save the output to your cookies file and try again.[/]"
+        )
+        sys.exit(1)
 
 
 @click.command()
@@ -109,21 +130,16 @@ def main(
 
         session = load_cookies(cookies)
 
-        try:
-            check_cookie_expiry(session)
-        except CookieExpiredError as e:
-            console.print(f"\n[bold red]Cookies expired:[/] {e}")
-            console.print(
-                "[yellow]To refresh, log into https://learning.oreilly.com, "
-                "open DevTools (Cmd+Option+I) > Console, and run:\n"
-                "  JSON.stringify(Object.fromEntries("
-                "document.cookie.split('; ').map(c => c.split('='))))\n"
-                "Then save the output to your cookies file and try again.[/]"
-            )
-            sys.exit(1)
+        # Fail fast if the cookie is already expired before any work starts.
+        require_valid_cookies(session)
 
         with OreillyClient(session) as client:
             for book_input in books:
+                # Re-check before each book: the token is short-lived (~1 day),
+                # so a long batch run can outlive it. Without this, the API
+                # silently returns truncated preview content for the rest.
+                require_valid_cookies(session)
+
                 book_id = extract_book_id(book_input)
                 console.print(f"[bold]Downloading book:[/] {book_id}")
                 book_data = client.get_book(book_id)
